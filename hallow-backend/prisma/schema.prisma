@@ -1,0 +1,123 @@
+// ─────────────────────────────────────────────
+//  Hallow — Prisma Database Schema
+// ─────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── User ─────────────────────────────────────
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  phone         String?
+  contactEmail  String?   // Alert contact email
+  contactPhone  String?   // Alert contact phone
+  gateMethod    String    @default("fingerprint") // fingerprint | passkey | email
+  duressPhrase  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  devices       Device[]
+  sessions      Session[]
+  events        Event[]
+  alerts        Alert[]
+  baseline      Baseline?
+
+  @@map("users")
+}
+
+// ── Device ────────────────────────────────────
+model Device {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  platform    String    // chrome | mobile | web
+  userAgent   String?
+  trusted     Boolean   @default(false)
+  lastSeen    DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("devices")
+}
+
+// ── Session ───────────────────────────────────
+model Session {
+  id            String    @id @default(cuid())
+  userId        String
+  sessionId     String    @unique  // From extension
+  url           String?
+  trustScore    Float     @default(100)
+  riskLevel     String    @default("low")
+  anomaly       Boolean   @default(false)
+  startedAt     DateTime  @default(now())
+  lastActive    DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events        Event[]
+
+  @@map("sessions")
+}
+
+// ── Event (behavioral feature vector) ─────────
+model Event {
+  id          String    @id @default(cuid())
+  userId      String
+  sessionId   String
+  url         String?
+  vector      Json      // The 12-feature vector
+  trustScore  Float
+  riskLevel   String
+  anomaly     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session     Session   @relation(fields: [sessionId], references: [sessionId])
+
+  @@map("events")
+}
+
+// ── Behavioral Baseline ───────────────────────
+model Baseline {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  vectors     Json      // Array of feature vectors
+  normMean    Json?     // Normalization mean
+  normStd     Json?     // Normalization std dev
+  threshold   Float     @default(0.05)
+  trained     Boolean   @default(false)
+  sampleCount Int       @default(0)
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("baselines")
+}
+
+// ── Alert ─────────────────────────────────────
+model Alert {
+  id          String    @id @default(cuid())
+  userId      String
+  type        String    // anomaly | lost_device | new_device
+  title       String
+  detail      String?
+  riskLevel   String    @default("high")
+  trustScore  Float?
+  url         String?
+  read        Boolean   @default(false)
+  notified    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("alerts")
+}
